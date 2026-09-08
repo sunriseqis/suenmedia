@@ -190,7 +190,9 @@ class DoubanSource(SourceProvider):
         if not result.ok:
             ok_flag = False
             self._record(False)
-            if result.is_retryable:
+            # 403 属反爬拦截，按本模块 docstring 约定降级为 retryable
+            # （进 RetryStore 冷却重试），不 raise 以免逐条刷 source_err。
+            if result.is_retryable or result.status_code == 403:
                 return None, ST_RETRYABLE
             raise ProviderError(f"豆瓣搜索失败: HTTP {result.status_code}")
         self._record(True)
