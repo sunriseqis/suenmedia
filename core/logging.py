@@ -153,6 +153,7 @@ def log_event(kind: str, level: str = "INFO", stream: Optional[TextIO] = None,
     """
     if _QUIET:
         return
+    message = fields.pop("message", None)
     if _JSON_MODE:
         payload: Dict[str, Any] = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
@@ -160,11 +161,15 @@ def log_event(kind: str, level: str = "INFO", stream: Optional[TextIO] = None,
             "event": kind,
         }
         payload.update(fields)
+        if message is not None:
+            payload["message"] = message
         _emit(stream, json.dumps(payload, ensure_ascii=False, default=str))
         return
     parts = " ".join(f"{k}={_fmt_value(v)}" for k, v in fields.items())
     line = f"{_now_str()} [{str(level).upper()}] {kind}"
-    if parts:
+    if message is not None:
+        line += " " + str(message)
+    elif parts:
         line += " " + parts
     _emit(stream, line)
 

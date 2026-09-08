@@ -463,12 +463,17 @@ class MaccmsSite:
                         log_event("crawl.progress.write_error", "WARNING", None,
                                   site=self.site_name, page=p)
 
-                # 页级心跳：每 N 页或距上次 ≥ interval 秒打一行，让 GA 日志随采集滚动
+                # 页级心跳：每 N 页或距上次 ≥ interval 秒打一行人类可读进度，让 GA 日志随采集滚动
                 if p - self._beat_page >= PAGE_BEAT_EVERY \
                         or time_now() - self._beat_at >= PAGE_BEAT_INTERVAL:
-                    event("crawl.site.page", site=self.site_name, page=p,
-                          pages=result.pages, items=len(result.items),
-                          elapsed=round(time_now() - run_start, 1))
+                    beat_elapsed = time_now() - run_start
+                    log_event(
+                        "crawl.site.page", "INFO", None,
+                        site=self.site_name, page=p, pages=result.pages,
+                        items=len(result.items), elapsed=round(beat_elapsed, 1),
+                        message=(
+                            f"{self.site_name} 已爬取{p}页 共{len(result.items)}条视频 "
+                            f"用时{beat_elapsed / 60.0:.1f}分钟"))
                     self._beat_page = p
                     self._beat_at = time_now()
 
