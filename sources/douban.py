@@ -120,7 +120,14 @@ class DoubanSource(SourceProvider):
                  settings: Any = None) -> None:
         super().__init__(settings)
         from core.config import Settings  # 循环安全惰性导入
-        self._settings = settings if settings is not None else Settings()
+        # settings 可能是 dict（ScrapeOrchestrator 传 dict 下来）或 Settings 实例，
+        # 本类依赖 Settings.rate_limit()，统一归一化避免 AttributeError。
+        if isinstance(settings, Settings):
+            self._settings = settings
+        elif isinstance(settings, dict):
+            self._settings = Settings.from_dict(settings)
+        else:
+            self._settings = settings or Settings()
         interval = 1.0 / max(float(self._settings.rate_limit("douban") or 1.0), 0.5)
         self._interval: float = interval
         self._client: HttpClient = client if client is not None else HttpClient()
