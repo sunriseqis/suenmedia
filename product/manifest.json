@@ -1,0 +1,16 @@
+{
+ "version": "v3",
+ "generated_at": "2026-09-08 23:38:34",
+ "elapsed_sec": 0.01,
+ "counts": {
+  "videos": 76,
+  "episode_shards": 0,
+  "unmatched": 3,
+  "m3u8": 0
+ },
+ "checksums": {
+  "videos.json": "7a9f456d7d95eed4beb01d41a386f1705730314741f6590c6d41dc99913c2070",
+  "episodes.jsonl.gz": "e3883a45c75dc540152b3235b41cf999e266530cceaab8d10febcd80b9103194",
+  "unmatched.json": "e7282046f4edb1f067e257743bf70e2695dc33e8d2acac1cb571fadd8ab6c4bf"
+ }
+}
