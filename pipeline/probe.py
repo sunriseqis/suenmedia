@@ -28,8 +28,9 @@
 from __future__ import annotations
 
 import threading
+import time
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlsplit, urlparse
 
 from core.cache import DOMAIN_ALIVE, CacheDB, DomainRegistry, cache_db_path as _cache_db_path
 from core.config import DEFAULT_PROBE, Settings, load_settings
@@ -40,6 +41,7 @@ __all__ = [
     "DomainProber",
     "parse_domain",
     "extract_representative_url",
+    "is_probeable_url",
 ]
 
 #: HEAD 视为可达的状态码（含重定向中间态；httpx 默认跟随重定向，最终 200/206）
@@ -66,6 +68,31 @@ def extract_representative_url(line: Dict[str, Any]) -> str:
     first = episodes[0]
     url = first.get("url") if isinstance(first, dict) else None
     return str(url or "")
+
+
+def is_probeable_url(url: str) -> bool:
+    """校验 URL 是否可安全探测。
+
+    源站 play_url 可能含脏数据（缺协议头、非法端口、分号拼接串等），
+    httpx 解析时会抛 `InvalidURL` 直接打崩整轮任务；这里统一前置校验，
+    非法 URL 一律视为不可探测（不请求、不崩）。
+    """
+    if not url:
+        return False
+    try:
+        parts = urlsplit(str(url))
+    except ValueError:
+        return False
+    if parts.scheme.lower() not in ("http", "https"):
+        return False
+    # 注意：urlsplit().port 是 property，端口非数字时访问它会直接抛
+    # ValueError（例: `http://x.com:8080;dn1.com`），必须单独保护。
+    try:
+        if parts.port is None:
+            return True
+        return int(parts.port) > 0
+    except ValueError:
+        return False
 
 
 class DomainProber:
@@ -163,6 +190,9 @@ class DomainProber:
 
     def probe_domain_sync(self, http: HttpClient, domain: str, url: str) -> bool:
         """sync 版本（cleanup.py 15 天复检用）。"""
+        # 脏 URL 前置拦截：不请求、不计入探测次数（统计口径与批量路径一致）
+        if not is_probeable_url(url):
+            return False
         ok = self._probe_sync(http, url)
         self.probes_per_run += 1
         if ok:
@@ -173,6 +203,8 @@ class DomainProber:
 
     def _probe_sync(self, http: HttpClient, url: str) -> bool:
         """sync 单 URL 探测。"""
+        if not is_probeable_url(url):  # 脏 URL 前置拦截，避免 httpx.InvalidURL 打崩整轮
+            return False
         result: FetchResult = http.request(
             "HEAD", url, timeout=self.timeout_head, retries=1, as_json=False, sleep=True)
         if result.status_code in _PROBE_OK_HEAD:
@@ -187,15 +219,26 @@ class DomainProber:
 
     async def _decide_async(self, client: AsyncHttpClient, domain: str, url: str) -> bool:
         """async 域名判定：需要探测则探一次，否则按注册表状态直接判定。"""
-        if self._registry.should_probe(domain):
-            return await self.probe_domain(client, domain, url)
-        return self._registry.state_of(domain) == DOMAIN_ALIVE
+        try:
+            if self._registry.should_probe(domain):
+                return await self.probe_domain(client, domain, url)
+            return self._registry.state_of(domain) == DOMAIN_ALIVE
+        except Exception:  # pylint: disable=broad-except - 脏 URL / 瞬时 IO 异常不拖垮整轮
+            return False
 
     def _decide_sync(self, http: HttpClient, domain: str, url: str) -> bool:
-        """sync 域名判定。"""
-        if self._registry.should_probe(domain):
-            return self.probe_domain_sync(http, domain, url)
-        return self._registry.state_of(domain) == DOMAIN_ALIVE
+        """sync 域名判定。
+
+        脏 URL（非法端口 / 协议头缺失 / 分号拼接串）会让 httpx 抛
+        `InvalidURL` 并直接打崩整轮任务；这里统一兜底为"不可用"，
+        只丢该条线路，不记录失败（非连通性证据，不应污染域名状态）。
+        """
+        try:
+            if self._registry.should_probe(domain):
+                return self.probe_domain_sync(http, domain, url)
+            return self._registry.state_of(domain) == DOMAIN_ALIVE
+        except Exception:  # pylint: disable=broad-except - 脏 URL / 瞬时 IO 异常不拖垮整轮
+            return False
 
     async def filter_lines(self, client: AsyncHttpClient, lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """async 域名级线路过滤：保留有效线路，返回过滤后的 lines。
@@ -218,6 +261,8 @@ class DomainProber:
             if not isinstance(line, dict):
                 continue
             url = extract_representative_url(line)
+            if not is_probeable_url(url):
+                continue  # 脏 URL：不请求、不崩（httpx 解析非法端口会抛 InvalidURL）
             domain = parse_domain(url)
             if not domain:
                 continue  # 无有效代表 URL 的线路直接弃
@@ -233,17 +278,72 @@ class DomainProber:
 
     def filter_lines_sync(self, http: HttpClient,
                           lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """sync 域名级线路过滤（cleanup.py 等同步场景）。"""
+        """sync 域名级线路过滤（cleanup.py 等同步场景，单条目）。
+
+        单条目调用会重置 memo；多条目请改用 `filter_items_sync`
+        （memo 跨条目复用做域名去重，避免数十万条目逐条清空重探）。
+        """
         if not self._settings.get("enable_m3u8_check", True):
             return lines
         with self._memo_lock:
             self._memo.clear()
             self.probes_per_run = 0
+        return self._filter_lines_sync(http, lines)
+
+    def filter_items_sync(self, http: HttpClient,
+                          items: List[Dict[str, Any]],
+                          progress_every: int = 50000) -> List[Dict[str, Any]]:
+        """sync 批量线路过滤（单轮多条目，P2.5 探活主线入口）。
+
+        与 `filter_lines_sync` 的区别：**memo 只清一次、跨条目复用**——
+        全量建库放行约 65 万条目，域名级去重后实际只探测上百个域名；
+        若逐条目调用 `filter_lines_sync` 会每次清空 memo 导致域名重复
+        探测，几十万次网络调用会卡住数十分钟。
+        """
+        if not self._settings.get("enable_m3u8_check", True):
+            return items
+        with self._memo_lock:
+            self._memo.clear()
+            self.probes_per_run = 0
+        t0 = time.time()
+        total = len(items or [])
+        every = max(int(progress_every or 0), 0)
+        kept: List[Dict[str, Any]] = []
+        for idx, item in enumerate(items or [], 1):
+            if not isinstance(item, dict):
+                continue
+            lines = item.get("lines") or []
+            if lines:
+                item["lines"] = self._filter_lines_sync(http, lines)
+            kept.append(item)
+            if every and idx % every == 0:
+                log_event("probe.items_progress", "INFO", None,
+                          done=idx, total=total,
+                          probes=self.probes_per_run,
+                          domains=len(self._memo),
+                          elapsed=round(time.time() - t0, 1),
+                          message=(
+                              f"[P2] 线路探活 已处理 {idx}/{total} 条 | "
+                              f"本轮探测 {self.probes_per_run} 个域名 | "
+                              f"用时{(time.time() - t0) / 60.0:.1f}分钟"))
+        log_event("probe.items_done", "INFO", None,
+                  items=total, probes=self.probes_per_run,
+                  domains=len(self._memo), elapsed=round(time.time() - t0, 1),
+                  message=(f"[P2] 线路探活完成：处理 {total} 条 | "
+                           f"本轮探测 {self.probes_per_run} 个域名 | "
+                           f"用时{(time.time() - t0) / 60.0:.1f}分钟"))
+        return kept
+
+    def _filter_lines_sync(self, http: HttpClient,
+                           lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """sync 单条目线路过滤（memo 跨条目复用，重置由调用方负责）。"""
         kept: List[Dict[str, Any]] = []
         for line in lines or []:
             if not isinstance(line, dict):
                 continue
             url = extract_representative_url(line)
+            if not is_probeable_url(url):
+                continue  # 脏 URL：不请求、不崩（httpx 解析非法端口会抛 InvalidURL）
             domain = parse_domain(url)
             if not domain:
                 continue

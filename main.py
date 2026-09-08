@@ -344,10 +344,14 @@ def cmd_harvest(args) -> int:
         return 0
 
     if not args.no_check and settings.get("enable_m3u8_check", True):
-        for it in raw_items:
-            lines = it.get("lines") or []
-            if lines:
-                it["lines"] = prober.filter_lines_sync(default_client(), lines)
+        # 批量入口：memo 跨条目复用，域名级去重后仅探测上百个域名。
+        # 此前逐条目调用 filter_lines_sync 会每次清空 memo，数十万条目
+        # 反复重探且无日志，表现为"停住好几分钟不动"。
+        _t_probe = time.time()
+        prober.filter_items_sync(default_client(), raw_items)
+        print(f"[P2] 线路探活完成：检查 {len(raw_items)} 条 | "
+              f"本轮探测 {prober.probes_per_run} 个域名 | "
+              f"耗时 {time.time() - _t_probe:.1f}s")
 
     merger = CoarseMerger(library=library)
     merge_stats = merger.merge(raw_items)
