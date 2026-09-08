@@ -55,6 +55,8 @@ FETCH_RETRIES: int = 2           # 单镜像尝试次数
 FALLBACK_SLEEP: float = 0.5      # 镜像轮换前的退避
 FAIL_THRESHOLD: int = 5          # 连续失败页数达阈值 → 中止该站（对齐旧实现）
 BACKOFF_AFTER_PAGE_FAIL: float = 0.3
+PAGE_BEAT_EVERY: int = 200        # 每完成 N 页打一行 crawl.site.page 心跳日志（GA 日志实时可见）
+PAGE_BEAT_INTERVAL: float = 60.0  # 或距上次心跳 ≥ 该秒数也打一行（页数少/慢站兜底）
 
 
 def clean_overview(text: Any) -> str:
@@ -329,6 +331,10 @@ class MaccmsSite:
         if self.mode == "incremental" and self.hours > 0:
             self._cutoff = datetime.now() - timedelta(hours=self.hours)
 
+        # 心跳节流状态（crawl.site.page 事件）
+        self._beat_page: int = 0
+        self._beat_at: float = time_now()
+
     # ---------------------------------------------------------- 页抓取（受信号量）
 
     async def _guarded_fetch(self, page: int) -> Tuple[Optional[Dict[str, Any]], str]:
@@ -403,6 +409,7 @@ class MaccmsSite:
         total_pages: Optional[int] = None
         page: int = self.start_page
         consecutive_failures: int = 0
+        run_start = time_now()
         event("crawl.site.start", site=self.site_name, mode=self.mode,
               start_page=page, hours=self.hours)
 
@@ -455,6 +462,15 @@ class MaccmsSite:
                     except Exception:  # pragma: no cover - 断点写失败不中断采集
                         log_event("crawl.progress.write_error", "WARNING", None,
                                   site=self.site_name, page=p)
+
+                # 页级心跳：每 N 页或距上次 ≥ interval 秒打一行，让 GA 日志随采集滚动
+                if p - self._beat_page >= PAGE_BEAT_EVERY \
+                        or time_now() - self._beat_at >= PAGE_BEAT_INTERVAL:
+                    event("crawl.site.page", site=self.site_name, page=p,
+                          pages=result.pages, items=len(result.items),
+                          elapsed=round(time_now() - run_start, 1))
+                    self._beat_page = p
+                    self._beat_at = time_now()
 
                 if stop:
                     stop_now, reason_now = True, (reason or "exhausted")

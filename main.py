@@ -95,8 +95,8 @@ def harvest_items(mode: str, hours: int | None, deadline: float | None,
     # 过滤在采集完成后统一执行（harvest 内部不做过滤）
     # （crawlers.harvest 返回的已是去重后 RawItem，逐条过 prefilter）
     for it in result.items:
-        ok, reason = pref.keep(it)
-        if ok:
+        verdict = pref.keep(it)
+        if verdict.ok:
             kept.append(it)
         else:
             drop += 1
@@ -218,7 +218,7 @@ def cmd_run(args) -> int:
         budget.record_scraped(cold_res["hit"] + cold_res["miss"])
         processed_this_round += len(batch)
         cold_quota -= len(batch)
-        if processed_this_round % 400 == 0:
+        if processed_this_round % 100 == 0:
             print(f"[P4][冷] 已处理 {processed_this_round} 条 | 剩余预算 {budget.remaining():.0f}s")
     print(f"[P4] 刮削完成: 命中 {stats.scraped_hit} | miss {stats.scraped_miss} | "
           f"retryable {stats.scraped_retryable} | discard {stats.scraped_discard} | "

@@ -2,6 +2,7 @@
 
 
 """
+import sys
 import os
 import re
 import json
@@ -154,6 +155,11 @@ def verify_movie_or_series_alive(item: dict, session) -> tuple[bool, dict]:
         return False, item
 
 def run_cleanup(days: int = 90, dry_run: bool = False, max_workers: int = 20):
+    # GitHub Actions 等非 TTY 环境下也实时刷新进度日志（行缓冲）
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except Exception:
+        pass
     start_time = time.time()
     threshold_dt = datetime.now() - timedelta(days=days)
     threshold_str = threshold_dt.strftime("%Y-%m-%d")
@@ -207,9 +213,8 @@ def run_cleanup(days: int = 90, dry_run: bool = False, max_workers: int = 20):
                         cleaned_old_items.append(clean_it)
                     else:
                         purged_in_cat += 1
-                    if done % 10 == 0 or done == len(old_items):
-                        print(f"  [探活进度] {done}/{len(old_items)} ({done*100//len(old_items)}%)", end="\r")
-            print()
+                    if done % 50 == 0 or done == len(old_items):
+                        print(f"  [探活进度] {done}/{len(old_items)} ({done*100//len(old_items)}%)", flush=True)
 
         final_cat_items = recent_items + cleaned_old_items
         total_retained += len(final_cat_items)
