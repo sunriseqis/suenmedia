@@ -162,12 +162,12 @@ def cmd_run(args) -> int:
     session = get_session()
     if raw_items and not args.no_check and settings.get("enable_m3u8_check", True):
         budget.phase_start("probe")
-        for it in raw_items:
-            lines = it.get("lines") or []
-            if lines:
-                it["lines"] = prober.filter_lines_sync(default_client(), lines)
+        # 批量入口：memo 跨条目复用，域名级去重后仅探测少量域名
+        #（逐条目调用 filter_lines_sync 会每次清空 memo 导致域名重复探测）
+        prober.filter_items_sync(default_client(), raw_items)
         phase_times["probe"] = budget.phase_done("probe")
-        print(f"[P2] 线路探活完成（域名级，网络请求极少）")
+        print(f"[P2] 线路探活完成（域名级，本轮探测 {prober.probes_per_run} 个域名，"
+              f"网络请求极少）")
 
     # ---------------- P3 粗合并 → 素材库 ----------------
     budget.phase_start("coarse")
@@ -183,7 +183,7 @@ def cmd_run(args) -> int:
     # ---------------- P4 素材库刮削（预算分配） ----------------
     budget.phase_start("scrape")
     scraper = ScrapeOrchestrator(cache=cache, library=library,
-                                 settings=settings.to_dict())
+                                 settings=settings)
     workers = int(settings.get("scrape_workers", 12) or 12)
     scrape_budget = budget.scrape_budget()
     print(f"[P4] 刮削预算: {scrape_budget:.0f}s | 并发: {workers} 线程")
@@ -230,7 +230,7 @@ def cmd_run(args) -> int:
     # 从素材库取已刮削命中条目（本库全部 scraped=hit 的 payload）
     hit_entities = _load_scraped_hits(library)
     if hit_entities:
-        fine = FineMerger(settings=settings.to_dict())
+        fine = FineMerger(settings=settings)
         for h in hit_entities:
             fine.add_item(h)
         fused = fine.finish()
