@@ -1,0 +1,81 @@
+sequenceDiagram
+    autonumber
+    participant M as main.py
+    participant B as Budget
+    participant H as harvest (async httpx)
+    participant PF as Prefilter
+    participant PR as DomainProber
+    participant CM as CoarseMerger
+    participant SP as ScrapePipeline
+    participant SC as MatchScorer
+    participant C as MetaCache
+    participant TM as TmdbSource
+    participant DB as DoubanSource
+    participant FM as FineMerger
+    participant EX as Exporter
+
+    M->>B: start()
+    M->>H: crawl(sites, per_site_sem=4)
+    H-->>M: list[RawItem] (deadline 420s)
+
+    M->>PF: keep(item)
+    PF-->>M: (bool, reason)
+
+    M->>PR: filter_lines(lines)
+    PR->>PR: state_of(domain)
+    alt 新域名
+        PR->>PR: HEAD probe (3s)
+    else alive
+        PR-->>M: 直接放行 (0 请求)
+    else dead
+        PR-->>M: 直接丢弃 (0 请求)
+    end
+
+    M->>CM: merge(items)
+    CM->>CM: TitleNormalizer.normalize -> merge_key
+    CM-->>M: list[CoarseEntity]
+
+    M->>B: scrape_seconds(t_spent)
+    B-->>M: T_SCRAPE
+    M->>B: quota(T_SCRAPE, rps, rpi)
+    B-->>M: quota
+
+    loop 每个 CoarseEntity (线程池 8-16, 受 quota/deadline 约束)
+        SP->>C: get(ck)
+        alt 命中正/负缓存
+            C-->>SP: (hit, meta) 或 (miss, ttl)
+        else 未缓存
+            SP->>C: title_index.get(nk)
+            alt 本地索引命中
+                C-->>SP: external_id (0 请求)
+            else
+                SP->>TM: search(title, category, year)
+                TM-->>SP: results[] 或 retryable
+                alt results 非空
+                    SP->>SC: score(item, candidate) (top-5)
+                    SC-->>SP: confidence
+                    alt confidence >= 55
+                        SP->>C: put_hit(ck, meta, 90d)
+                    else 低置信 40-54
+                        SP->>TM: external_ids(id) 校验 douban_id
+                        TM-->>SP: external_ids
+                    end
+                else 空结果
+                    SP->>DB: search(title) [限额 300-500/轮]
+                    DB-->>SP: hit / miss / retryable
+                    SP->>C: put_miss(ck, soft|hard, confirmed_by)
+                end
+            end
+        end
+    end
+    SP-->>M: list[EnrichedEntity]
+
+    M->>FM: merge(enriched)
+    FM->>FM: apply_gate (matched + cover + overview + confidence >= 55)
+    FM-->>M: FinalEntity + unmatched
+
+    M->>EX: export(entities)
+    EX->>EX: EpisodeNormalizer + 跨线路对齐 (url + alt_urls)
+    EX-->>M: product/videos.json + episodes.jsonl.gz
+
+    M->>C: flush()

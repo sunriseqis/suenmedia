@@ -1,0 +1,71 @@
+name: SuenMedia 全站建库（一次性全量任务）
+
+# 一次性任务: 手动派发 (workflow_dispatch), 每次派发做一段工作并提交进度,
+# 被中断/超时后再次派发会自动从断点接续, 反复派发直至素材库构建收敛。
+# T04/T05 变更: 原 full_crawl.py 已删除, 阶段 0 全量建库改由
+#   `python main.py harvest --full` 承担（采集 + 过滤 + 粗合并 → raw_library）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: '增量时间窗（小时；全量模式实际翻到站点尽头，此参数仅作约束）'
+        required: false
+        default: '720'
+      no_check:
+        description: '跳过线路探活（true/false）'
+        required: false
+        default: 'false'
+
+# 防止两次派发并行跑导致进度文件冲突
+concurrency:
+  group: 全站建库
+  cancel-in-progress: false
+
+jobs:
+  full-crawl:
+    name: 全站建库
+    runs-on: ubuntu-latest
+    timeout-minutes: 350   # 留 10 分钟余量给提交步骤, 避免撞 6 小时硬上限
+    permissions:
+      contents: write
+
+    steps:
+      - name: 检出仓库代码（含历史进度）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 设置 Python 运行环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 安装项目依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 执行全站采集入库（阶段 0 建素材库）
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          HOURS="${{ github.event.inputs.hours || '720' }}"
+          NO_CHECK="${{ github.event.inputs.no_check || 'false' }}"
+          if [ "$NO_CHECK" = "true" ]; then
+            python main.py harvest --full --no-check
+          else
+            python main.py harvest --full
+          fi
+
+      # 无论任务成功或撞上超时被标记失败, 都尽量把进度提交回仓库
+      - name: 提交进度与数据
+        if: always()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add cache/ product/ json/raw/progress.json 2>/dev/null || true
+          git commit -m "全站建库: 素材库进度存档 [$(date -u +'%Y-%m-%d %H:%M') UTC]" || echo "无变更"
+          git pull origin main --rebase || true
+          git push origin main || echo "推送失败, 下次派发将基于本地进度重做"

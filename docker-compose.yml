@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  suenmedia:
+    build: .
+    container_name: suenmedia-harvester
+    restart: unless-stopped
+    environment:
+      - PUSHPLUS_TOKEN=${PUSHPLUS_TOKEN}
+      - TMDB_API_KEY=${TMDB_API_KEY}
+    volumes:
+      - ./json:/app/json
+      - ./m3u8:/app/m3u8
+      - ./cache:/app/cache
+      - ./settings.json:/app/settings.json
+      - ./config.json:/app/config.json
+    command: python main.py

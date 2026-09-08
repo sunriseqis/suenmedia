@@ -1,0 +1,187 @@
+classDiagram
+    class Settings {
+        +float tmdb_min_interval
+        +int scrape_workers
+        +int crawl_per_site_concurrency
+        +int run_budget_seconds
+        +dict rate_limits
+        +dict cache_ttl
+        +dict prefilter
+    }
+
+    class MetaCache {
+        -Connection _conn
+        +get(ck) tuple
+        +put_hit(ck, meta, ttl)
+        +put_miss(ck, kind, confirmed_by, ttl)
+        +flush()
+        +purge_expired()
+        +bool neg_cache_enabled
+    }
+
+    class TitleIndex {
+        +get(nk) tuple
+        +put(nk, provider, external_id, media_type)
+    }
+
+    class DomainRegistry {
+        +state_of(domain) str
+        +probe_new(domain) bool
+        +mark_ok(domain)
+        +mark_fail(domain)
+        +list_for_recheck(days) list
+    }
+
+    class RawSeen {
+        +seen(site, raw_id) bool
+        +mark(site, raw_id, content_hash)
+    }
+
+    class TokenBucket {
+        +float rate
+        +float capacity
+        +float tokens
+        +acquire() float
+        +penalize(factor)
+    }
+
+    class RateLimiter {
+        -dict~str, TokenBucket~ _buckets
+        +acquire(source)
+        +on_429(source, retry_after)
+        +error_rate() float
+    }
+
+    class SourceAdapter {
+        <<abstract>>
+        +str name
+        +search(title, category, year) tuple
+        +detail(external_id) tuple
+        +enabled() bool
+    }
+
+    class TmdbSource {
+        +search() tuple
+        +detail() tuple
+    }
+
+    class DoubanSource {
+        +int budget_per_run
+        +int used
+        +search() tuple
+    }
+
+    class TvdbSource {
+        +search() tuple
+    }
+
+    class BilibiliSource {
+        +search() tuple
+    }
+
+    class OmdbSource {
+        +search() tuple
+    }
+
+    class MatchScorer {
+        +score(item, candidate) int
+        -_title_sim(a, b) float
+        -_year_score(a, b) int
+        -_type_score(a, b) int
+        -_episode_score(a, b) int
+    }
+
+    class TitleParts {
+        +str norm_title
+        +int seq
+        +str year
+        +int season
+        +list quality_tags
+    }
+
+    class TitleNormalizer {
+        +normalize(raw) TitleParts
+        +merge_key(parts, category) str
+    }
+
+    class EpisodeParts {
+        +int ep_number
+        +str ep_title
+        +str air_date
+        +str kind
+    }
+
+    class EpisodeNormalizer {
+        +normalize(name, category) EpisodeParts
+        +align_across_lines(lines) list
+    }
+
+    class Prefilter {
+        +keep(item) tuple
+    }
+
+    class DomainProber {
+        +filter_lines(lines) list
+    }
+
+    class CoarseMerger {
+        +merge(items) list
+    }
+
+    class ScrapePipeline {
+        -MetaCache _cache
+        -RateLimiter _limiter
+        -MatchScorer _scorer
+        +run(entities, quota, deadline) list
+        -_enrich_one(entity) EnrichResult
+    }
+
+    class FineMerger {
+        +merge(enriched) list
+        +apply_gate(entity) bool
+    }
+
+    class Exporter {
+        +export(entities) dict
+        -_to_v3(entity) dict
+    }
+
+    class Budget {
+        +int total_seconds
+        +remaining(now) int
+        +scrape_seconds(spent) int
+        +quota(seconds, rps, rpi) int
+    }
+
+    class Pipeline {
+        +run() Report
+    }
+
+    SourceAdapter <|-- TmdbSource
+    SourceAdapter <|-- DoubanSource
+    SourceAdapter <|-- TvdbSource
+    SourceAdapter <|-- BilibiliSource
+    SourceAdapter <|-- OmdbSource
+
+    Pipeline --> Prefilter
+    Pipeline --> DomainProber
+    Pipeline --> CoarseMerger
+    Pipeline --> ScrapePipeline
+    Pipeline --> FineMerger
+    Pipeline --> Exporter
+    Pipeline --> Budget
+    Pipeline --> Settings
+
+    ScrapePipeline --> MetaCache
+    ScrapePipeline --> TitleIndex
+    ScrapePipeline --> RateLimiter
+    ScrapePipeline --> MatchScorer
+    ScrapePipeline --> SourceAdapter
+
+    CoarseMerger --> TitleNormalizer
+    TitleNormalizer ..> TitleParts
+    EpisodeNormalizer ..> EpisodeParts
+    Exporter --> EpisodeNormalizer
+    DomainProber --> DomainRegistry
+    MetaCache --> Settings
+    RateLimiter *-- TokenBucket

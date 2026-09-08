@@ -1,0 +1,62 @@
+name: SuenMedia 定时采集与同步
+
+on:
+  schedule:
+    - cron: '0 */12 * * *'
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: '增量时间窗（小时，默认 24）'
+        required: false
+        default: '24'
+      dry_run:
+        description: '演练模式（不推送不通知：true/false）'
+        required: false
+        default: 'false'
+
+jobs:
+  harvest-sync:
+    name: 采集同步
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 设置 Python 运行环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 安装项目依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 运行影视自动化采集与刮削（完整流水线）
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: |
+          HOURS="${{ github.event.inputs.hours || '24' }}"
+          DRY="${{ github.event.inputs.dry_run || 'false' }}"
+          if [ "$DRY" = "true" ]; then
+            python main.py run --hours $HOURS --dry-run
+          else
+            python main.py run --hours $HOURS
+          fi
+
+      - name: 保底推送变更
+        if: always()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add product/ cache/ json/raw/progress.json 2>/dev/null || true
+          git commit -m "采集: 定时同步影视库更新 [$(date +'%Y-%m-%d %H:%M')]" || echo "无变更需要提交"
+          git pull origin main --rebase || true
+          git push origin main || echo "推送由 main.py 处理或无更新"

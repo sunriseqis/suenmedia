@@ -1,0 +1,183 @@
+{
+  "SITES": [
+    {
+      "name": "索尼资源",
+      "api_url": "https://suoniapi.com/api.php/provide/vod/",
+      "enabled": true,
+      "type": "maccms_v10",
+      "priority": 1,
+      "line_name": "索尼线路",
+      "fallbacks": []
+    },
+    {
+      "name": "红牛资源",
+      "api_url": "https://www.hongniuzy2.com/api.php/provide/vod/",
+      "enabled": true,
+      "type": "maccms_v10",
+      "priority": 2,
+      "line_name": "红牛线路",
+      "fallbacks": [
+        "https://www.hongniuzy3.com/api.php/provide/vod/"
+      ]
+    },
+    {
+      "name": "非凡资源",
+      "api_url": "https://api.ffzyapi.com/api.php/provide/vod/",
+      "enabled": true,
+      "type": "maccms_v10",
+      "priority": 3,
+      "line_name": "非凡线路",
+      "fallbacks": [
+        "https://ffzy5.tv/api.php/provide/vod/"
+      ]
+    },
+    {
+      "name": "暴风资源",
+      "api_url": "https://bfzyapi.com/api.php/provide/vod/",
+      "enabled": true,
+      "type": "maccms_v10",
+      "priority": 4,
+      "line_name": "暴风线路",
+      "fallbacks": [
+        "https://by.bfzyapi.com/api.php/provide/vod/"
+      ]
+    },
+    {
+      "name": "光速资源",
+      "api_url": "https://api.guangsuapi.com/api.php/provide/vod/",
+      "enabled": true,
+      "type": "maccms_v10",
+      "priority": 5,
+      "line_name": "光速线路",
+      "fallbacks": []
+    },
+    {
+      "name": "360资源",
+      "api_url": "https://360zy.com/api.php/provide/vod/",
+      "enabled": true,
+      "type": "maccms_v10",
+      "priority": 6,
+      "line_name": "360线路",
+      "fallbacks": [
+        "https://360zy5.com/api.php/provide/vod/"
+      ]
+    },
+    {
+      "name": "最大化资源",
+      "api_url": "https://api.zuidapi.com/api.php/provide/vod/",
+      "enabled": true,
+      "type": "maccms_v10",
+      "priority": 7,
+      "line_name": "最大化线路",
+      "fallbacks": []
+    },
+    {
+      "name": "天涯资源",
+      "api_url": "https://tyyszy.com/api.php/provide/vod/",
+      "enabled": true,
+      "type": "maccms_v10",
+      "priority": 8,
+      "line_name": "天涯线路",
+      "fallbacks": [
+        "https://tyyszy1.com/api.php/provide/vod/"
+      ]
+    },
+    {
+      "name": "金鹰资源",
+      "api_url": "https://jinyingzy.com/api.php/provide/vod/",
+      "enabled": true,
+      "type": "maccms_v10",
+      "priority": 9,
+      "line_name": "金鹰线路",
+      "fallbacks": []
+    },
+    {
+      "name": "蓝光资源",
+      "api_url": "https://cj.lziapi.com/api.php/provide/vod/",
+      "enabled": true,
+      "type": "maccms_v10",
+      "priority": 10,
+      "line_name": "蓝光线路",
+      "fallbacks": []
+    }
+  ],
+  "CATEGORY_RULES": {
+    "movies": [
+      "电影",
+      "电影片",
+      "动作片",
+      "喜剧片",
+      "爱情片",
+      "科幻片",
+      "恐怖片",
+      "剧情片",
+      "战争片",
+      "悬疑片",
+      "惊悚片",
+      "犯罪片",
+      "奇幻片",
+      "灾难片",
+      "冒险片",
+      "经典片",
+      "动画电影"
+    ],
+    "tv": [
+      "电视剧",
+      "连续剧",
+      "国产剧",
+      "内地剧",
+      "港台剧",
+      "香港剧",
+      "台湾剧",
+      "日韩剧",
+      "韩国剧",
+      "日本剧",
+      "欧美剧",
+      "海外剧",
+      "泰剧",
+      "美剧",
+      "英剧"
+    ],
+    "anime": [
+      "动漫",
+      "动画片",
+      "国产动漫",
+      "日本动漫",
+      "欧美动漫",
+      "海外动漫",
+      "新番日漫",
+      "经典动漫"
+    ],
+    "variety": [
+      "综艺",
+      "综艺片",
+      "大陆综艺",
+      "港台综艺",
+      "日韩综艺",
+      "欧美综艺",
+      "海外综艺",
+      "真人秀"
+    ],
+    "short_tv": [
+      "短剧",
+      "微短剧",
+      "都市短剧",
+      "爽剧",
+      "古装短剧",
+      "现代短剧",
+      "女频短剧",
+      "反转爽剧",
+      "甜宠短剧",
+      "短剧大全"
+    ]
+  },
+  "REGION_RULES": {
+    "country_map": {},
+    "language_map": {},
+    "sub_region_words": {}
+  },
+  "GENRE_RULES": {
+    "synonyms": {},
+    "canonical": []
+  }
+}
