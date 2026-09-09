@@ -1,7 +1,7 @@
 {
  "version": "2.1",
- "generated_at": "2026-09-09 04:09:52",
- "elapsed_sec": 0.05,
+ "generated_at": "2026-09-09 04:20:43",
+ "elapsed_sec": 0.01,
  "counts": {
   "videos": 99,
   "episode_shards": 0,
@@ -10,8 +10,8 @@
  },
  "m3u8_skipped": false,
  "checksums": {
-  "videos.json": "379bb7a586a7024e8b0e0829a4eafc6cda4c70cfdc13fd1946296e55a05a927d",
-  "episodes.jsonl.gz": "fe593f35e150af5677721d6dff2ec48120dd0f37dbc2b33f299f7e96c98f611f",
-  "unmatched.json": "ae2869aeb063712d4517c08c45138c5d1b027f0a7151ab9d960ced733e7f9c1a"
+  "videos.json": "55c66b70f66f9856f4282f6651782aad76dc137de123d6d10ded88c5907e0ebe",
+  "episodes.jsonl.gz": "7e567e6b4e1e3b653521266d40f5f652b3fbd0270aa34af310bb8d02210f2fb2",
+  "unmatched.json": "ef32d2ffa964d849a0cea65a2c3d1fe0a0375cd2c143750f831e64b14ee1b21e"
  }
 }
