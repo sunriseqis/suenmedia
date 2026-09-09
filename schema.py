@@ -49,7 +49,7 @@ __all__ = [
 
 # ---------------------------------------------------------------- 常量
 
-CONTRACT_VERSION: str = "v3"
+CONTRACT_VERSION: str = "2.1"
 
 TYPE_VIDEO: str = "video"
 TYPE_SERIES: str = "series"
@@ -384,9 +384,9 @@ def validate_item(item: Any, require_gate: bool = False,
     # --- 列表/枚举
     tags = item.get("tags")
     if tags is None:
-        warnings.append("tags 缺失（按空串处理）")
-    elif not isinstance(tags, str):
-        errors.append(f"tags 必须是字符串（当前 {type(tags).__name__}）")
+        warnings.append("tags 缺失（按空处理）")
+    elif not (isinstance(tags, str) or _is_str_list(tags)):
+        errors.append(f"tags 必须是字符串或字符串列表（当前 {type(tags).__name__}）")
 
     genres = item.get("genres")
     if genres is None:

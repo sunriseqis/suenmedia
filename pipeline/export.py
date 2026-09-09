@@ -49,7 +49,7 @@ def _ep_count_of(item: Dict[str, Any]) -> int:
 #: 分片大小（episodes 每行一条 bangou → 每片最多 N 条）
 SHARD_LINES: int = 2000
 
-VERSION: str = "v3"
+VERSION: str = "2.1"
 
 
 def write_json_atomic(path: str, payload: Any) -> None:
@@ -72,9 +72,17 @@ def sha256_file(path: str) -> str:
 
 
 def _clean_product(item: Dict[str, Any]) -> Dict[str, Any]:
-    """导出前清洗：poster 字段驱逐 + 深拷贝防污染内存。"""
+    """导出前清洗：poster 字段驱逐 + 深拷贝防污染内存 + tags 规范化。"""
     out = json.loads(json.dumps(item, ensure_ascii=False, default=str))
     out.pop("poster", None)
+    # 规范化 tags 为列表
+    raw_tags = out.get("tags")
+    if isinstance(raw_tags, str):
+        import re as _re
+        out["tags"] = [t.strip() for t in _re.split(r"[,/|; ]+", raw_tags) if t.strip()]
+    elif not isinstance(raw_tags, list):
+        out["tags"] = []
+
     for season in out.get("seasons") or []:
         season.pop("poster", None)
         season.pop("season_poster", None)
@@ -128,17 +136,19 @@ class Exporter:
         os.makedirs(self._m3u8_dir, exist_ok=True)
 
         cleaned = [_clean_product(it) for it in (items or [])]
-        # videos.json：剥离 episodes 只留元数据
-        videos = []
-        for it in cleaned:
-            meta = {k: v for k, v in it.items() if k != "seasons"}
-            if meta.get("episodes"):
-                meta.pop("episodes")
-            meta["episode_count"] = sum(
-                len(s.get("episodes") or []) for s in (it.get("seasons") or []))
-            videos.append(meta)
+        videos = cleaned
+        # videos.json：遵循消费端 (suenplayer) 2.1 产物契约
+        # 完整保留 seasons 与 episodes，顶层按契约包装 schema_version / project / items
+        videos_payload = {
+            "schema_version": version,
+            "project": {"name": "影视仓", "slug": "suenmedia"},
+            "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "source": "suenmedia",
+            "generator": "suenmedia-exporter",
+            "items": videos,
+        }
         videos_path = os.path.join(self._root, "videos.json")
-        write_json_atomic(videos_path, videos)
+        write_json_atomic(videos_path, videos_payload)
 
         # episodes.jsonl.gz 分片
         shards = self._export_episode_shards(cleaned, version)
