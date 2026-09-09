@@ -52,7 +52,8 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add product/ cache/
+          git add product/ 2>/dev/null || true
+          git add cache/ 2>/dev/null || true
           git commit -m "清洗: 定时深度清洗全失活死链数据 [$(date +'%Y-%m-%d')]" || echo "无失效死链需要清理"
           git pull origin main --rebase || true
           git push origin main || echo "无变更提交"
