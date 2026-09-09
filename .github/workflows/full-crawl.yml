@@ -65,9 +65,7 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add cache/ 2>/dev/null || true
           git add product/ 2>/dev/null || true
-          git add json/raw/progress.json 2>/dev/null || true
           git commit -m "全站建库: 素材库进度存档 [$(date -u +'%Y-%m-%d %H:%M') UTC]" || echo "无变更"
           git pull origin main --rebase || true
           git push origin main || echo "推送失败, 下次派发将基于本地进度重做"

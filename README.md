@@ -78,7 +78,7 @@ export PUSHPLUS_TOKEN=xxx        # 可选
 docker compose up -d --build
 ```
 
-容器默认执行 `python main.py`（run 流水线），`json/`、`cache/`、`settings.json`、`config.json` 均已挂载卷保留数据。
+容器默认执行 `python main.py`（run 流水线），`product/`、`settings.json`、`config.json` 均已挂载卷保留数据。
 
 ## 4. 配置说明
 
@@ -129,9 +129,9 @@ product/
 │   └── {category}/{bangou}.m3u8   # 每作品一份播放列表
 └── manifest.json          # 版本 / 条目数 / 各文件 sha256 / 生成时间
 
-cache/suenmedia.db         # SQLite(WAL)：meta_cache / title_index / domain_registry /
+product/suenmedia.db         # SQLite(WAL)：meta_cache / title_index / domain_registry /
                            # raw_seen / retry_queue / raw_library（素材库）
-json/raw/                  # 采集原始数据 jsonl.gz + 站点进度/轮换游标
+product/progress.json       # 全量建库断点游标（跨派发续跑）
 ```
 
 **契约硬性约束（消费端 suenplayer 强依赖）**：

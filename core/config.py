@@ -39,7 +39,7 @@ CONFIG_FILENAME: str = "config.json"
 DOTENV_FILENAME: str = ".env"
 
 #: 缓存文件默认目录（设计文档 §8：SQLite 取代 5MB 单文件 JSON）
-DEFAULT_CACHE_DIR: str = os.path.join("cache")
+DEFAULT_CACHE_DIR: str = os.path.join("product")
 DEFAULT_CACHE_DB: str = os.path.join(DEFAULT_CACHE_DIR, "suenmedia.db")
 
 

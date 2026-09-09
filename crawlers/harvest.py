@@ -51,7 +51,7 @@ __all__ = [
 ]
 
 #: 默认断点游标文件（设计文档 §2 P1）
-DEFAULT_PROGRESS_PATH: str = os.path.join("json", "raw", "progress.json")
+DEFAULT_PROGRESS_PATH: str = os.path.join("product", "progress.json")
 
 #: 硬超时默认值 = settings.budget.crawl_max（420s）
 DEFAULT_CRAWL_TIMEOUT: int = 420
@@ -103,7 +103,7 @@ def item_content_hash(item: Dict[str, Any]) -> str:
 class ProgressStore:
     """每站独立断点游标（设计文档 §2 P1 / T03 验收⑦）。
 
-    文件格式（`json/raw/progress.json`）::
+    文件格式（`product/progress.json`）::
 
         {
           "索尼资源": {"page": 137, "done": true,  "updated_at": "2026-09-08 15:00:00"},
@@ -310,7 +310,7 @@ async def harvest(sites: Optional[List[Dict[str, Any]]] = None, *,
         mode: "full"（阶段 0 全量建库）| "incremental"（日常增量，默认）。
         hours: 增量时间窗（小时）；None 用 settings.crawl_hours。
         deadline: 硬超时（time.monotonic 值）；incremental 默认 now + budget.crawl_max。
-        db: SQLite 库（CacheDB 实例 / 路径 / None → 默认 cache/suenmedia.db）。
+        db: SQLite 库（CacheDB 实例 / 路径 / None → 默认 product/suenmedia.db）。
         client: 共享 AsyncHttpClient；None 时内部创建并在结束时关闭。
         progress_path: progress.json 路径；None 用默认。
         settings / config: 配置实例；None 惰性加载。

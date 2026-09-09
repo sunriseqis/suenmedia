@@ -14,17 +14,6 @@ venv/
 # pytest 运行缓存
 .pytest_cache/
 
-# 采集原始数据（运行时重建，不入库；progress.json 断点游标需入库供全站建库跨派发恢复）
-json/raw/*.jsonl.gz
-json/raw/enrich_offset.json
-json/raw/*.gz
-
 # 素材库 SQLite 的 WAL/SHM 瞬态文件（db 本体入库，wal/shm 不入）
-cache/suenmedia.db-wal
-cache/suenmedia.db-shm
-
-# 旧系统遗弃的缓存与隔离产物（新链路用 SQLite / product/unmatched.json）
-cache/tvdb_token.json
-cache/metadata_cache.json
-cache/cover_hosts.json
-json/unmatched/
+product/suenmedia.db-wal
+product/suenmedia.db-shm
