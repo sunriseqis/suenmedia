@@ -28,11 +28,23 @@ import json
 import os
 import shutil
 import time
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.logging import log_event
 
 __all__ = ["Exporter", "export_items", "write_json_atomic", "sha256_file"]
+
+
+#: m3u8 导出时间预算（秒）。实测 73759 部作品写 73759 个文件需约 180s，
+#: 瓶颈是逐文件 I/O 而非内容生成，产物价值却很低——超时即整体不生成。
+M3U8_TIME_BUDGET_SEC: float = 180.0
+#: 采样批次大小：先量算这批的耗时，按比例外推全量，决定是否值得生成
+M3U8_SAMPLE_SIZE: int = 200
+
+
+def _ep_count_of(item: Dict[str, Any]) -> int:
+    """统计一部作品的分集总数（seasons[].episodes[]）。"""
+    return sum(len(s.get("episodes") or []) for s in (item.get("seasons") or []))
 
 #: 分片大小（episodes 每行一条 bangou → 每片最多 N 条）
 SHARD_LINES: int = 2000
@@ -109,7 +121,7 @@ class Exporter:
 
         Returns:
             {"videos": n, "episodes_shards": n, "unmatched": n,
-             "m3u8": n, "manifest": str}
+             "m3u8": n, "m3u8_skipped": bool, "manifest": str}
         """
         started = time.time()
         os.makedirs(self._root, exist_ok=True)
@@ -135,8 +147,8 @@ class Exporter:
         unmatched_path = os.path.join(self._root, "unmatched.json")
         write_json_atomic(unmatched_path, unmatched or [])
 
-        # m3u8 分片
-        m3u8_count = self._export_m3u8(cleaned)
+        # m3u8 分片（时间预算制：超 M3U8_TIME_BUDGET_SEC 则整体不生成）
+        m3u8_count, m3u8_skipped = self._export_m3u8(cleaned)
 
         # manifest.json
         elapsed = time.time() - started
@@ -150,6 +162,7 @@ class Exporter:
                 "unmatched": len(unmatched or []),
                 "m3u8": m3u8_count,
             },
+            "m3u8_skipped": m3u8_skipped,
             "checksums": {
                 "videos.json": sha256_file(videos_path),
                 "episodes.jsonl.gz": sha256_file(self._episodes_path),
@@ -166,6 +179,7 @@ class Exporter:
             "episodes_shards": shards,
             "unmatched": len(unmatched or []),
             "m3u8": m3u8_count,
+            "m3u8_skipped": m3u8_skipped,
             "manifest": manifest_path,
         }
 
@@ -192,19 +206,67 @@ class Exporter:
 
     # ---------------------------------------------------------- m3u8
 
-    def _export_m3u8(self, cleaned: List[Dict[str, Any]]) -> int:
-        """m3u8 播放列表（§8 契约：按 category/bangou 组织）。"""
+    def _export_m3u8(self, cleaned: List[Dict[str, Any]]) -> Tuple[int, bool]:
+        """m3u8 播放列表（§8 契约：按 category/bangou 组织）。
+
+        时间预算制：先量算前 M3U8_SAMPLE_SIZE 部的实际耗时，按比例外推全量；
+        预计超出 M3U8_TIME_BUDGET_SEC 则**整体不生成**（清空 m3u8/，不留半成品）。
+        实测 73759 部作品需约 180s，瓶颈在逐文件 I/O，产物价值低。
+
+        Returns:
+            (count, skipped)：count 为写出的 m3u8 文件数；skipped 为 True
+            表示因预算不足整体跳过（此时 count 为 0）。
+        """
+        eligible = self._eligible_for_m3u8(cleaned)
+        total = len(eligible)
+        if total == 0:
+            return 0, False
+
+        # --- 采样：真实写盘前 N 部，用实际耗时外推（比纯理论估算可靠）---
+        sample_n = min(M3U8_SAMPLE_SIZE, total)
+        t0 = time.time()
+        self._write_m3u8_batch(eligible[:sample_n])
+        sample_sec = time.time() - t0
+        projected = (sample_sec * total / sample_n) if sample_n else 0.0
+
+        if projected > M3U8_TIME_BUDGET_SEC:
+            # 预算不足：清空已写出的采样产物，不留半成品（下次运行不会误判为已有）
+            shutil.rmtree(self._m3u8_dir, ignore_errors=True)
+            os.makedirs(self._m3u8_dir, exist_ok=True)
+            log_event("export.m3u8_skip", "WARNING", None, items=total,
+                      projected_sec=round(projected, 1),
+                      budget_sec=M3U8_TIME_BUDGET_SEC, sample_sec=round(sample_sec, 2),
+                      message=(f"[P6] m3u8 备份跳过：预计 {projected / 60.0:.1f}分钟 "
+                               f"超过 {M3U8_TIME_BUDGET_SEC / 60.0:.0f}分钟预算（"
+                               f"{total} 部作品），不生成"))
+            return 0, True
+
+        # --- 预算充足：写出剩余部分 ---
+        count = self._write_m3u8_batch(eligible)
+        log_event("export.m3u8_done", "INFO", None, items=count,
+                  projected_sec=round(projected, 1),
+                  message=f"[P6] m3u8 备份生成 {count} 个文件（预计 {projected / 60.0:.1f}分钟）")
+        return count, False
+
+    @staticmethod
+    def _eligible_for_m3u8(cleaned: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """筛出可导出 m3u8 的作品（有 bangou 且至少 1 条分集）。"""
+        return [it for it in cleaned
+                if str(it.get("bangou") or "") and _ep_count_of(it) > 0]
+
+    def _write_m3u8_batch(self, items: List[Dict[str, Any]]) -> int:
+        """原子写出一批 m3u8（每部作品一个文件，按 category 分目录）。"""
         count = 0
-        for it in cleaned:
+        for it in items:
             bangou = str(it.get("bangou") or "")
             category = str(it.get("category") or "movies")
-            if not bangou:
-                continue
             lines = ["#EXTM3U"]
             for season in it.get("seasons") or []:
                 for ep in season.get("episodes") or []:
                     ep_title = str(ep.get("ep_title") or f"第{ep.get('ep_number')}集")
-                    lines.append(f"#EXTINF:-1,{bangou} S{season.get('season_number')}E{ep.get('ep_number')} {ep_title}")
+                    lines.append(
+                        f"#EXTINF:-1,{bangou} S{season.get('season_number')}"
+                        f"E{ep.get('ep_number')} {ep_title}")
                     lines.append(str(ep.get("url") or ""))
             if len(lines) <= 1:
                 continue
